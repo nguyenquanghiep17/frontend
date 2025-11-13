@@ -14,6 +14,10 @@
       </div>
     </div>
 
+    <div v-if="hasRealtimeError" class="warning">
+      ⚠️ Không thể kết nối realtime. Vui lòng tải lại thủ công.
+    </div>
+
     <div v-if="loading" class="loading">Loading emails...</div>
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else-if="emails.length === 0" class="empty">No emails found</div>
@@ -71,6 +75,7 @@
 
 <script>
 import { mailService } from '../services/mailService'
+import { subscribeToMail } from '../services/realtimeService'
 
 export default {
   name: 'InboxView',
@@ -80,7 +85,19 @@ export default {
       loading: false,
       error: null,
       selectedAccount: 'your-email@gmail.com',
-      selectedEmail: null
+      selectedEmail: null,
+      unsubscribeRealtime: null,
+      subscribedAccount: null,
+      hasRealtimeError: false
+    }
+  },
+  async mounted() {
+    await this.loadEmails()
+  },
+  async beforeUnmount() {
+    if (this.unsubscribeRealtime) {
+      await this.unsubscribeRealtime()
+      this.unsubscribeRealtime = null
     }
   },
   methods: {
@@ -94,6 +111,7 @@ export default {
       this.error = null
       try {
         this.emails = await mailService.getInboxEmails(this.selectedAccount)
+        await this.setupRealtimeSubscription()
       } catch (err) {
         this.error = err.response?.data?.error || err.message || 'Failed to load emails'
       } finally {
@@ -121,6 +139,36 @@ export default {
       const sizes = ['Bytes', 'KB', 'MB', 'GB']
       const i = Math.floor(Math.log(bytes) / Math.log(k))
       return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+    },
+    async setupRealtimeSubscription() {
+      if (this.subscribedAccount === this.selectedAccount && this.unsubscribeRealtime) {
+        return
+      }
+
+      if (this.unsubscribeRealtime) {
+        await this.unsubscribeRealtime()
+        this.unsubscribeRealtime = null
+        this.subscribedAccount = null
+      }
+
+      if (!this.selectedAccount) return
+
+      try {
+        this.unsubscribeRealtime = await subscribeToMail(this.selectedAccount, this.handleIncomingEmail)
+        this.subscribedAccount = this.selectedAccount
+        this.hasRealtimeError = false
+      } catch (err) {
+        console.error('Failed to subscribe to realtime updates', err)
+        this.hasRealtimeError = true
+      }
+    },
+    handleIncomingEmail(email) {
+      if (!email || !email.id) return
+
+      const exists = this.emails.some(e => e.id === email.id)
+      if (exists) return
+
+      this.emails = [email, ...this.emails].sort((a, b) => new Date(b.date) - new Date(a.date))
     }
   }
 }
@@ -179,6 +227,15 @@ export default {
 
 .btn-primary:hover {
   background: #5568d3;
+}
+
+.warning {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  background: #fff5e6;
+  color: #b87100;
+  border: 1px solid #ffd9a6;
 }
 
 .loading, .error, .empty {
@@ -351,4 +408,5 @@ export default {
   margin-bottom: 0.5rem;
 }
 </style>
+
 
