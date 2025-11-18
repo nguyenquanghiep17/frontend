@@ -1,6 +1,6 @@
 import { HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr'
 
-const HUB_URL = 'http://localhost:5000/hub/mail'
+const HUB_URL = 'https://localhost:44367/hub/mail'
 
 let connection = null
 const accountHandlers = new Map()
